@@ -12,7 +12,48 @@ from real_time_voice_processing.signal_processing import SignalProcessing
 
 
 class AudioRuntime:
-    """运行时引擎：负责音频采集与信号处理线程"""
+    """
+    运行时引擎（AudioRuntime）。
+
+    负责管理音频采集与信号处理两个线程，并提供数据访问与保存接口。
+
+    Attributes
+    ----------
+    format : int
+        音频采样格式（`pyaudio` 常量）。
+    channels : int
+        声道数。
+    rate : int
+        采样率（Hz）。
+    chunk : int
+        每次从音频设备读取的块大小（样本点）。
+    frame_size : int
+        分析帧长度（样本点）。
+    hop_size : int
+        帧移（样本点）。
+    window : numpy.ndarray
+        当前使用的窗函数（长度为 `frame_size`）。
+    energy_threshold : float
+        语音检测的能量阈值。
+    zcr_threshold : float
+        语音检测的过零率阈值。
+    audio_buffer : collections.deque
+        原始音频缓冲区（最新数据在尾部）。
+    processed_data : collections.deque
+        已处理特征的缓冲区，元素为字典：`{"energy", "zcr", "vad", "spec_entropy", "vad_adaptive", "mfcc"}`。
+    energy_history : collections.deque
+        能量历史（用于自适应 VAD）。
+    zcr_history : collections.deque
+        过零率历史（用于自适应 VAD）。
+    is_running : bool
+        运行标记。
+    audio_thread : threading.Thread | None
+        音频采集线程。
+    processing_thread : threading.Thread | None
+        信号处理线程。
+    lock : threading.Lock
+        线程间共享数据的互斥锁。
+    """
 
     def __init__(self):
         # 基本参数
@@ -44,6 +85,15 @@ class AudioRuntime:
         self.lock = threading.Lock()
 
     def start(self):
+        """
+        启动运行时引擎。
+
+        创建并启动音频采集与信号处理线程。若已在运行则忽略。
+
+        Returns
+        -------
+        None
+        """
         if not self.is_running:
             self.is_running = True
             self.audio_thread = threading.Thread(target=self._audio_capture_thread, daemon=True)
@@ -52,6 +102,15 @@ class AudioRuntime:
             self.processing_thread.start()
 
     def stop(self):
+        """
+        停止运行时引擎。
+
+        设置运行标记为 False，并等待采集与处理线程安全退出。
+
+        Returns
+        -------
+        None
+        """
         if self.is_running:
             self.is_running = False
             if self.audio_thread:
@@ -60,6 +119,15 @@ class AudioRuntime:
                 self.processing_thread.join()
 
     def _audio_capture_thread(self):
+        """
+        音频采集线程函数。
+
+        从系统音频设备连续读取数据并写入 `audio_buffer`。异常发生时尽力释放设备资源。
+
+        Returns
+        -------
+        None
+        """
         p = pyaudio.PyAudio()
         stream = None
         try:
@@ -86,6 +154,15 @@ class AudioRuntime:
                 p.terminate()
 
     def _signal_processing_thread(self):
+        """
+        信号处理线程函数。
+
+        从 `audio_buffer` 中取数据并按帧处理，计算时域与频域特征、语音活动检测，并写入 `processed_data`。
+
+        Returns
+        -------
+        None
+        """
         overlap_buffer = np.array([], dtype=np.int16)
         sleep_time = Config.THREAD_SLEEP_TIME
 
@@ -148,6 +225,14 @@ class AudioRuntime:
                     )
 
     def get_recent_audio(self):
+        """
+        获取最近音频波形片段。
+
+        Returns
+        -------
+        numpy.ndarray
+        一维整型数组，长度不超过 `Config.WAVEFORM_DISPLAY_LENGTH`。
+        """
         with self.lock:
             if len(self.audio_buffer) == 0:
                 return np.array([], dtype=np.int16)
@@ -158,6 +243,19 @@ class AudioRuntime:
         return recent_audio
 
     def get_recent_processed(self, max_display=None):
+        """
+        获取最近处理后的特征。
+
+        Parameters
+        ----------
+        max_display : int or None, optional
+            返回的最大帧数；若为 `None` 则使用 `Config.MAX_DISPLAY_FRAMES`。
+
+        Returns
+        -------
+        tuple of numpy.ndarray
+            `(energies, zcrs, vads)` 三个一维数组。
+        """
         if max_display is None:
             max_display = Config.MAX_DISPLAY_FRAMES
         with self.lock:
@@ -173,6 +271,19 @@ class AudioRuntime:
         return np.array(energies), np.array(zcrs), np.array(vads)
 
     def save_data(self, directory=None):
+        """
+        保存处理数据到 NPZ 文件。
+
+        Parameters
+        ----------
+        directory : str or None, optional
+            保存目录；若为 `None` 则使用 `Config.SAVE_DIRECTORY`。
+
+        Returns
+        -------
+        str
+            保存的文件路径。
+        """
         if directory is None:
             directory = Config.SAVE_DIRECTORY
         timestamp = time.strftime("%Y%m%d_%H%M%S")

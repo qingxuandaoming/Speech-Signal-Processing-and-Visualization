@@ -19,11 +19,13 @@ downloads/
 *.egg-info/
 *.egg
 pip-wheel-metadata/
+docs/_build/
 
 
 # Logs and Cache
 *.log
 .cache/
+.pytest_cache/
 
 # IDE / Editors
 .idea/

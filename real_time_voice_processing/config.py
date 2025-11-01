@@ -1,12 +1,76 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-系统配置文件
-包含所有可配置的参数
+系统配置（Config）
+=================
+
+集中管理音频、信号处理、特征提取、VAD、可视化、缓冲与线程等参数。
+
+Attributes
+----------
+Config : type
+    包含全部静态配置项的类。
 """
 
 class Config:
-    """系统配置类"""
+    """
+    系统配置类。
+
+    Attributes
+    ----------
+    AUDIO_FORMAT : int
+        `pyaudio` 的采样格式常量（`paInt16`）。
+    CHANNELS : int
+        声道数。
+    SAMPLE_RATE : int
+        采样率（Hz）。
+    CHUNK_SIZE : int
+        从设备读取的块大小（样本点）。
+    FRAME_DURATION : int
+        帧长（毫秒）。
+    FRAME_SIZE : int
+        帧长对应的样本点数。
+    HOP_SIZE : int
+        帧移（样本点）。
+    WINDOW_TYPE : str
+        窗函数类型（`"hamming"`、`"hanning"` 或 `"rectangular"`）。
+    PREEMPHASIS_ALPHA : float
+        预加重系数。
+    NUM_MFCC : int
+        MFCC 倒谱系数数量。
+    MFCC_N_FFT : int
+        MFCC 计算的 FFT 点数。
+    MEL_FILTERS : int
+        Mel 滤波器数量。
+    MFCC_LIFTER : int
+        MFCC 倒谱升力系数。
+    SPECTRAL_ENTROPY_N_FFT : int
+        谱熵计算使用的 FFT 点数。
+    ENERGY_THRESHOLD : float
+        固定阈值 VAD 的能量阈值。
+    ZCR_THRESHOLD : float
+        固定阈值 VAD 的过零率阈值。
+    ADAPTIVE_VAD_HISTORY_MIN : int
+        自适应 VAD 的最小历史长度（未在当前实现中强制）。
+    ADAPTIVE_VAD_ENERGY_K : float
+        历史版本使用的能量平滑系数（兼容参数）。
+    ADAPTIVE_VAD_ZCR_K : float
+        历史版本使用的 ZCR 平滑系数（兼容参数）。
+    PLOT_UPDATE_INTERVAL : int
+        界面刷新间隔（毫秒）。
+    MAX_DISPLAY_FRAMES : int
+        最大显示帧数。
+    WAVEFORM_DISPLAY_LENGTH : int
+        波形显示的最大样本数。
+    AUDIO_BUFFER_SIZE : int
+        音频缓冲区最大块数。
+    PROCESSED_DATA_BUFFER_SIZE : int
+        已处理数据缓冲区的最大帧数。
+    THREAD_SLEEP_TIME : float
+        处理线程空闲等待时间（秒）。
+    SAVE_DIRECTORY : str
+        数据文件保存目录。
+    """
     
     # 音频参数
     AUDIO_FORMAT = 1  # pyaudio.paInt16
@@ -54,7 +118,13 @@ class Config:
     
     @staticmethod
     def print_config():
-        """打印配置信息"""
+        """
+        打印关键配置信息到标准输出。
+
+        Returns
+        -------
+        None
+        """
         print("=" * 50)
         print("实时语音信号处理系统 - 配置信息")
         print("=" * 50)

@@ -8,7 +8,19 @@ from pyqtgraph.Qt import QtCore, QtGui
 
 
 class VisualizationUI:
-    """可视化界面：负责图形界面与交互"""
+    """
+    可视化界面（VisualizationUI）。
+
+    使用 `pyqtgraph` 展示实时音频波形、短时能量、过零率与语音活动检测结果，
+    并提供开始、停止与保存数据的基本交互控件。
+
+    Parameters
+    ----------
+    runtime : object
+        运行时引擎实例，需实现 `start()`、`stop()`、`get_recent_audio()`、`get_recent_processed()` 与 `save_data()` 方法。
+    title : str, optional
+        窗口标题，默认 "实时语音信号处理系统"。
+    """
 
     def __init__(self, runtime, title="实时语音信号处理系统"):
         self.runtime = runtime
@@ -20,6 +32,13 @@ class VisualizationUI:
         self._init_timer()
 
     def _init_ui(self):
+        """
+        初始化图形界面布局与绘图组件。
+
+        Returns
+        -------
+        None
+        """
         self.waveform_plot = self.win.addPlot(title="实时音频波形", row=0, col=0)
         self.waveform_curve = self.waveform_plot.plot(pen="b")
         self.waveform_plot.setYRange(-32768, 32768)
@@ -66,11 +85,25 @@ class VisualizationUI:
         self.win.addWidget(self.ctrl_widget, row=4, col=0)
 
     def _init_timer(self):
+        """
+        初始化界面定时器，用于周期刷新图形。
+
+        Returns
+        -------
+        None
+        """
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._update_plots)
         self.timer.start(50)
 
     def _update_plots(self):
+        """
+        刷新绘图数据：从 `runtime` 获取最新音频与特征并更新曲线。
+
+        Returns
+        -------
+        None
+        """
         recent_audio = self.runtime.get_recent_audio()
         if len(recent_audio) > 0:
             self.waveform_curve.setData(recent_audio)
@@ -83,4 +116,11 @@ class VisualizationUI:
             self.vad_curve.setData(x_data, vads)
 
     def run(self):
+        """
+        运行图形界面事件循环。
+
+        Returns
+        -------
+        None
+        """
         sys.exit(self.app.exec_())

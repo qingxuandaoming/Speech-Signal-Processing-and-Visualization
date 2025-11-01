@@ -226,7 +226,13 @@ pytest
 ```
 real_time_voice_processing/
 ├── main.py                  # 入口文件（调用 runtime 与 ui）
-├── signal_processing.py     # 信号处理算法模块
+├── signal_processing/       # 信号处理算法子包（模块化实现）
+│   ├── __init__.py          # 聚合类 SignalProcessing（兼容旧 API）
+│   ├── windows.py           # 窗函数
+│   ├── preprocessing.py     # 预加重与分帧
+│   ├── time_features.py     # 时域特征
+│   ├── frequency_features.py# 频域特征（Mel、MFCC、谱熵）
+│   └── vad.py               # 固定/自适应 VAD
 ├── config.py                # 配置文件
 ├── runtime/
 │   └── engine.py           # 运行时音频采集与处理（线程控制）
