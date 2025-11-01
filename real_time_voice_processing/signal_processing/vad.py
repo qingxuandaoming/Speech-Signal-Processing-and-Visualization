@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 语音活动检测（Voice Activity Detection, VAD）
-=============================================
 
 提供基于短时能量与过零率的固定阈值 VAD，以及使用历史统计的自适应 VAD。
 """
@@ -22,18 +21,18 @@ def voice_activity_detection(
     Parameters
     ----------
     energy : numpy.ndarray
-        每帧短时能量数组。
+        每帧短时能量数组，形状为 `(num_frames,)` 或标量。
     zcr : numpy.ndarray
-        每帧过零率数组。
+        每帧过零率数组，形状为 `(num_frames,)` 或标量。
     energy_threshold : float
         能量阈值，高于该值视为语音。
     zcr_threshold : float
-        过零率阈值，低于该值更可能为语音。
+        过零率阈值，高于该值更可能为语音。
 
     Returns
     -------
     numpy.ndarray
-        布尔数组，`True` 表示语音活动。
+        形状为 `(num_frames,)` 的布尔数组，`True` 表示语音活动。
     """
     energy = energy.astype(np.float32, copy=False)
     zcr = zcr.astype(np.float32, copy=False)
@@ -59,9 +58,9 @@ def adaptive_voice_activity_detection(
     Parameters
     ----------
     energy : numpy.ndarray
-        当前批次每帧能量数组。
+        当前批次每帧能量数组，形状为 `(num_frames,)`。
     zcr : numpy.ndarray
-        当前批次每帧过零率数组。
+        当前批次每帧过零率数组，形状为 `(num_frames,)`。
     energy_history : list of float
         历史能量均值的列表（用于平滑）。
     zcr_history : list of float
@@ -76,7 +75,7 @@ def adaptive_voice_activity_detection(
     Returns
     -------
     numpy.ndarray
-        布尔数组，`True` 表示语音活动。
+        形状为 `(num_frames,)` 的布尔数组，`True` 表示语音活动。
     """
     energy = energy.astype(np.float32, copy=False)
     zcr = zcr.astype(np.float32, copy=False)

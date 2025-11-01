@@ -1,4 +1,5 @@
 # 实时语音信号处理系统
+
 ## 核心算法汇报
 
 ---
@@ -31,6 +32,7 @@
 ```
 
 **设计特点：**
+
 - 多线程并发处理
 - 生产者-消费者模式
 - 实时数据流转
@@ -43,6 +45,7 @@
 \[ E(i) = \sum_{n=0}^{N-1} x_i(n)^2 \]
 
 **实现代码：**
+
 ```python
 def calculate_short_time_energy(frame):
     """计算短时能量"""
@@ -50,6 +53,7 @@ def calculate_short_time_energy(frame):
 ```
 
 **应用场景：**
+
 - 区分语音和静音
 - 语音强度分析
 - 端点检测
@@ -62,6 +66,7 @@ def calculate_short_time_energy(frame):
 \[ ZCR(i) = \frac{1}{2N} \sum_{n=0}^{N-1} |\text{sign}(x_i(n)) - \text{sign}(x_i(n+1))| \]
 
 **实现代码：**
+
 ```python
 def calculate_zero_crossing_rate(frame):
     """计算过零率"""
@@ -71,6 +76,7 @@ def calculate_zero_crossing_rate(frame):
 ```
 
 **应用场景：**
+
 - 区分清音和浊音
 - 噪声检测
 - 语音特征分析
@@ -82,12 +88,14 @@ def calculate_zero_crossing_rate(frame):
 **双门限检测算法：**
 
 1. **第一级判决**：能量检测
+
    ```python
    if energy < energy_threshold:
        return 0  # 静音
    ```
 
 2. **第二级判决**：过零率检测
+
    ```python
    if zcr > zcr_threshold:
        return 1  # 语音
@@ -99,9 +107,8 @@ def calculate_zero_crossing_rate(frame):
 1, & E(i) > T_E \,\land\, \mathrm{ZCR}(i) > T_Z \\
 0, & \text{otherwise}
 \end{cases}\]
-   ```
 
----
+   ```
 
 ### 算法性能优化
 
