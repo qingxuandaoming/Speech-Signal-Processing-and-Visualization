@@ -111,10 +111,18 @@ class Config:
     ADAPTIVE_VAD_ENERGY_K = 3.0
     ADAPTIVE_VAD_ZCR_K = 1.0
     # 复合VAD门控与平滑
-    USE_ADAPTIVE_VAD = False  # 默认关闭自适应VAD，避免在背景噪声下过度放宽
+    USE_ADAPTIVE_VAD = True  # 开启自适应 VAD，使阈值随历史平滑调整
     SPECTRAL_ENTROPY_VOICE_MAX = 0.55  # 谱熵低于该阈值更可能为语音
     VAD_HANGOVER_ON = 2  # 进入语音后至少保持的帧数（减少粘连）
     VAD_RELEASE_OFF = 2  # 退出语音需连续静音帧数
+
+    # 自动阈值校准（依据当前音频的响度与特征分布）
+    AUTO_CALIBRATE_THRESHOLDS = True  # 运行开始后，使用首批帧自适应估计阈值
+    CALIBRATION_FRAMES = 200  # 用于校准的帧数（20ms*200≈4s）
+    AUTO_ENERGY_PERCENTILE = 65  # 能量阈值采用分位数（越高越保守）
+    AUTO_ZCR_PERCENTILE = 45     # 过零率阈值采用分位数（用于 zcr<阈值）
+    AUTO_ENTROPY_PERCENTILE = 45 # 谱熵语音上限采用分位数（用于 entropy<阈值）
+    MIN_ENERGY_THRESHOLD = 1e6   # 自动校准得到的能量阈值下限（避免过低）
     
     # 可视化参数
     PLOT_UPDATE_INTERVAL = 50  # 界面更新间隔（毫秒）
@@ -186,6 +194,14 @@ class Config:
             Config.ADAPTIVE_VAD_HISTORY_MIN,
             Config.ADAPTIVE_VAD_ENERGY_K,
             Config.ADAPTIVE_VAD_ZCR_K,
+        )
+        logging.info(
+            "自动校准: enable=%s, frames=%d, p_energy=%d, p_zcr=%d, p_entropy=%d",
+            str(Config.AUTO_CALIBRATE_THRESHOLDS),
+            Config.CALIBRATION_FRAMES,
+            Config.AUTO_ENERGY_PERCENTILE,
+            Config.AUTO_ZCR_PERCENTILE,
+            Config.AUTO_ENTROPY_PERCENTILE,
         )
 
     @staticmethod

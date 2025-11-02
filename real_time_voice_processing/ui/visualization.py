@@ -438,6 +438,14 @@ class VisualizationUI(QtCore.QObject):
         self.simulate_rt_checkbox = QtWidgets.QCheckBox("模拟实时处理（文件）")
         self.simulate_rt_checkbox.setChecked(False)
         
+        # 自动校准阈值：按当前音频自适应能量/ZCR/谱熵阈值
+        try:
+            default_auto_cal = bool(getattr(Config, 'AUTO_CALIBRATE_THRESHOLDS', True))
+        except Exception:
+            default_auto_cal = True
+        self.auto_calibrate_checkbox = QtWidgets.QCheckBox("自动校准阈值（按当前音频自适应）")
+        self.auto_calibrate_checkbox.setChecked(default_auto_cal)
+        
         # 自动坐标范围匹配开关
         self.auto_range_checkbox = QtWidgets.QCheckBox("自动匹配坐标范围")
         self.auto_range_checkbox.setChecked(True)
@@ -450,9 +458,14 @@ class VisualizationUI(QtCore.QObject):
         self.settings_layout.addLayout(src_radio_layout)
         self.settings_layout.addLayout(choose_layout)
         self.settings_layout.addLayout(test_radio_layout)
-        self.settings_layout.addWidget(self.auto_stop_checkbox)
-        self.settings_layout.addWidget(self.simulate_rt_checkbox)
-        self.settings_layout.addWidget(self.auto_range_checkbox)
+        # 四个功能选择键水平排列，减少行占用
+        options_row_layout = QtWidgets.QHBoxLayout()
+        options_row_layout.addWidget(self.auto_stop_checkbox)
+        options_row_layout.addWidget(self.simulate_rt_checkbox)
+        options_row_layout.addWidget(self.auto_calibrate_checkbox)
+        options_row_layout.addWidget(self.auto_range_checkbox)
+        options_row_layout.addStretch(1)
+        self.settings_layout.addLayout(options_row_layout)
         self.settings_layout.addWidget(self.file_combo_container)  # 使用容器而不是直接的combo
         self.settings_layout.addWidget(self.hint_label)
 
@@ -897,6 +910,13 @@ class VisualizationUI(QtCore.QObject):
             try:
                 from real_time_voice_processing.config import Config as _Cfg
                 _Cfg.SIMULATE_REALTIME_FILES = bool(self.simulate_rt_checkbox.isChecked())
+                _Cfg.AUTO_CALIBRATE_THRESHOLDS = bool(self.auto_calibrate_checkbox.isChecked())
+            except Exception:
+                pass
+            # 模拟实时处理时同步播放
+            try:
+                if hasattr(self.runtime, 'set_playback_enabled'):
+                    self.runtime.set_playback_enabled(bool(self.simulate_rt_checkbox.isChecked()))
             except Exception:
                 pass
             self._done_prompt_shown = False

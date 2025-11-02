@@ -90,6 +90,15 @@ class AudioRuntime:
         # 阈值
         self.energy_threshold = Config.ENERGY_THRESHOLD
         self.zcr_threshold = Config.ZCR_THRESHOLD
+        # 谱熵语音上限（允许运行时调节）
+        self.spec_entropy_voice_max = Config.SPECTRAL_ENTROPY_VOICE_MAX
+
+        # 自动阈值校准（首批帧）
+        self._calibration_done = False
+        self._cal_energy: list[float] = []
+        self._cal_zcr: list[float] = []
+        self._cal_entropy: list[float] = []
+        self._calibration_frames_target = int(getattr(Config, "CALIBRATION_FRAMES", 0) or 0)
 
         # 缓冲区
         self.audio_buffer = deque(maxlen=Config.AUDIO_BUFFER_SIZE)
@@ -112,6 +121,10 @@ class AudioRuntime:
         # VAD 平滑状态
         self._vad_hold: int = 0
         self._silence_run: int = 0
+        # 播放控制（用于文件实时模拟时同步播放）
+        self.playback_enabled: bool = False
+        self._playback_pyaudio = None
+        self._playback_stream = None
 
     def set_audio_source(self, audio_source: AudioSource | None, auto_stop_on_eof: bool = False) -> None:
         """
@@ -144,6 +157,27 @@ class AudioRuntime:
         self.energy_history.clear()
         self.zcr_history.clear()
         self.audio_display_buffer.clear()
+        # 重置自动校准状态
+        self._calibration_done = False
+        self._cal_energy.clear()
+        self._cal_zcr.clear()
+        self._cal_entropy.clear()
+        # 切换音源时确保播放资源关闭
+        try:
+            self._close_playback_stream()
+        except Exception:
+            pass
+
+    def set_playback_enabled(self, enable: bool) -> None:
+        """
+        设置是否在模拟实时文件处理时同步播放音频。
+
+        Notes
+        -----
+        - 仅在音源为文件/播放列表且 `Config.SIMULATE_REALTIME_FILES` 为 True 时生效。
+        - 更改会在下次启动或下一次采集周期内应用。
+        """
+        self.playback_enabled = bool(enable)
 
     def start(self):
         """
@@ -194,6 +228,27 @@ class AudioRuntime:
         try:
             self.audio_source.open()
             stream_opened = True
+            # 根据条件打开播放流（仅文件/播放列表 + 模拟实时 + 已启用）
+            try:
+                should_play = (
+                    self.playback_enabled
+                    and Config.SIMULATE_REALTIME_FILES
+                    and isinstance(self.audio_source, (FileAudioSource, PlaylistAudioSource))
+                )
+                if should_play:
+                    import pyaudio  # 局部导入
+                    self._playback_pyaudio = pyaudio.PyAudio()
+                    self._playback_stream = self._playback_pyaudio.open(
+                        format=Config.AUDIO_FORMAT,
+                        channels=1,
+                        rate=int(self.rate),
+                        output=True,
+                        frames_per_buffer=int(Config.CHUNK_SIZE),
+                    )
+            except Exception as _e:
+                logger.warning("打开播放流失败：%s", _e)
+                self._playback_stream = None
+                self._playback_pyaudio = None
             while self.is_running:
                 audio_data = self.audio_source.read(self.chunk)
                 if audio_data is None or len(audio_data) == 0:
@@ -209,6 +264,13 @@ class AudioRuntime:
                     self.audio_buffer.append(audio_data)
                     # 保留一份用于波形显示
                     self.audio_display_buffer.append(np.array(audio_data, copy=True))
+                # 播放输出（尽量不阻塞主流程）
+                try:
+                    if self._playback_stream is not None and len(audio_data) > 0:
+                        self._playback_stream.write(audio_data.tobytes())
+                except Exception:
+                    # 播放失败不影响处理
+                    pass
                 # 模拟实时：对文件/播放列表按采样率节流
                 try:
                     if Config.SIMULATE_REALTIME_FILES and isinstance(
@@ -231,6 +293,11 @@ class AudioRuntime:
                     self.audio_source.close()
             except Exception:
                 # 关闭异常不应影响退出
+                pass
+            # 关闭播放资源
+            try:
+                self._close_playback_stream()
+            except Exception:
                 pass
 
     def _signal_processing_thread(self):
@@ -267,10 +334,35 @@ class AudioRuntime:
                     windowed_frame, n_fft=Config.SPECTRAL_ENTROPY_N_FFT
                 )
 
+                # 自动校准：积累首批帧统计并一次性计算分位阈值
+                try:
+                    if Config.AUTO_CALIBRATE_THRESHOLDS and not self._calibration_done:
+                        self._cal_energy.append(float(energy))
+                        self._cal_zcr.append(float(zcr))
+                        self._cal_entropy.append(float(spec_entropy))
+                        if self._calibration_frames_target > 0 and len(self._cal_energy) >= self._calibration_frames_target:
+                            e = np.percentile(np.array(self._cal_energy, dtype=np.float32), float(Config.AUTO_ENERGY_PERCENTILE))
+                            z = np.percentile(np.array(self._cal_zcr, dtype=np.float32), float(Config.AUTO_ZCR_PERCENTILE))
+                            se = np.percentile(np.array(self._cal_entropy, dtype=np.float32), float(Config.AUTO_ENTROPY_PERCENTILE))
+                            self.energy_threshold = max(float(getattr(Config, "MIN_ENERGY_THRESHOLD", 0.0) or 0.0), float(e))
+                            self.zcr_threshold = float(np.clip(z, 0.0, 0.5))
+                            self.spec_entropy_voice_max = float(np.clip(se, 0.0, 1.0))
+                            self._calibration_done = True
+                            logger.info(
+                                "自动校准完成: energy_th=%.2f, zcr_th=%.3f, entropy_max=%.3f (frames=%d)",
+                                self.energy_threshold,
+                                self.zcr_threshold,
+                                self.spec_entropy_voice_max,
+                                len(self._cal_energy),
+                            )
+                except Exception:
+                    # 校准失败不影响主流程
+                    pass
+
                 # 基本门控：能量高 + （ZCR 低 或 谱熵低）
                 energy_gate = bool(energy > self.energy_threshold)
                 zcr_gate = bool(zcr < self.zcr_threshold)
-                entropy_gate = bool(spec_entropy < Config.SPECTRAL_ENTROPY_VOICE_MAX)
+                entropy_gate = bool(spec_entropy < self.spec_entropy_voice_max)
                 vad_initial = bool(energy_gate and (zcr_gate or entropy_gate))
 
                 # 自适应VAD（用于增强稳健性，可选合并）
@@ -326,6 +418,24 @@ class AudioRuntime:
                             "mfcc": mfcc.tolist(),
                         }
                     )
+
+    def _close_playback_stream(self) -> None:
+        """关闭并释放播放音频的 PyAudio 资源。"""
+        try:
+            if self._playback_stream:
+                try:
+                    self._playback_stream.stop_stream()
+                except Exception:
+                    pass
+                self._playback_stream.close()
+        finally:
+            if self._playback_pyaudio:
+                try:
+                    self._playback_pyaudio.terminate()
+                except Exception:
+                    pass
+            self._playback_stream = None
+            self._playback_pyaudio = None
 
     def get_recent_audio(self):
         """

@@ -51,10 +51,10 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
         rate = int(src.sample_rate or (sample_rate or Config.SAMPLE_RATE))
         frame_size = Config.FRAME_SIZE
         hop_size = Config.HOP_SIZE
-        window = SignalProcessing.hamming_window(frame_size)
 
         # 分帧并计算特征/判决（与运行时一致）
-        frames = SignalProcessing.framing(pcm.astype(np.float32), frame_size, hop_size)
+        # 注意：framing 已经按默认 hamming 加窗，这里避免二次加窗
+        frames = SignalProcessing.framing(pcm.astype(np.float32), frame_size, hop_size, window_type="hamming")
         energies: List[float] = []
         zcrs: List[float] = []
         entropies: List[float] = []
@@ -65,17 +65,42 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
         vad_hold = 0
         silence_run = 0
 
+        # 阈值（可自动校准）
+        energy_th = float(Config.ENERGY_THRESHOLD)
+        zcr_th = float(Config.ZCR_THRESHOLD)
+        entropy_max = float(Config.SPECTRAL_ENTROPY_VOICE_MAX)
+
+        cal_energy: List[float] = []
+        cal_zcr: List[float] = []
+        cal_entropy: List[float] = []
+        cal_done = False
+        cal_target = int(getattr(Config, "CALIBRATION_FRAMES", 0) or 0)
+
         for fr in frames:
-            frame = (fr * window).astype(np.float32)
+            frame = fr.astype(np.float32)
             energy = float(SignalProcessing.calculate_short_time_energy(frame))
             zcr = float(SignalProcessing.calculate_zero_crossing_rate(frame))
             entropy = float(
                 SignalProcessing.calculate_spectral_entropy(frame, n_fft=Config.SPECTRAL_ENTROPY_N_FFT)
             )
 
-            energy_gate = bool(energy > Config.ENERGY_THRESHOLD)
-            zcr_gate = bool(zcr < Config.ZCR_THRESHOLD)
-            entropy_gate = bool(entropy < Config.SPECTRAL_ENTROPY_VOICE_MAX)
+            # 自动校准：首批帧分位值
+            if Config.AUTO_CALIBRATE_THRESHOLDS and not cal_done:
+                cal_energy.append(energy)
+                cal_zcr.append(zcr)
+                cal_entropy.append(entropy)
+                if cal_target > 0 and len(cal_energy) >= cal_target:
+                    e = np.percentile(np.array(cal_energy, dtype=np.float32), float(Config.AUTO_ENERGY_PERCENTILE))
+                    z = np.percentile(np.array(cal_zcr, dtype=np.float32), float(Config.AUTO_ZCR_PERCENTILE))
+                    se = np.percentile(np.array(cal_entropy, dtype=np.float32), float(Config.AUTO_ENTROPY_PERCENTILE))
+                    energy_th = max(float(getattr(Config, "MIN_ENERGY_THRESHOLD", 0.0) or 0.0), float(e))
+                    zcr_th = float(np.clip(z, 0.0, 0.5))
+                    entropy_max = float(np.clip(se, 0.0, 1.0))
+                    cal_done = True
+
+            energy_gate = bool(energy > energy_th)
+            zcr_gate = bool(zcr < zcr_th)
+            entropy_gate = bool(entropy < entropy_max)
             vad_initial = bool(energy_gate and (zcr_gate or entropy_gate))
 
             vad_adapt = SignalProcessing.adaptive_voice_activity_detection(
@@ -123,6 +148,18 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
             "frames": total_frames,
             "voice_frames": voice_frames,
             "voice_ratio": voice_ratio,
+            "thresholds": {
+                "energy": float(energy_th),
+                "zcr": float(zcr_th),
+                "spectral_entropy_max": float(entropy_max),
+                "auto_calibrate": bool(Config.AUTO_CALIBRATE_THRESHOLDS),
+                "calibration_frames": int(getattr(Config, "CALIBRATION_FRAMES", 0) or 0),
+                "percentiles": {
+                    "energy": int(getattr(Config, "AUTO_ENERGY_PERCENTILE", 80)),
+                    "zcr": int(getattr(Config, "AUTO_ZCR_PERCENTILE", 30)),
+                    "entropy": int(getattr(Config, "AUTO_ENTROPY_PERCENTILE", 70)),
+                },
+            },
             "energy": {
                 "mean": float(np.mean(energies)) if total_frames > 0 else 0.0,
                 "min": float(np.min(energies)) if total_frames > 0 else 0.0,
@@ -172,6 +209,14 @@ def main():
         print(f"总帧数: {stats['frames']}")
         print(f"语音帧数: {stats['voice_frames']}")
         print(f"语音占比: {stats['voice_ratio']*100:.2f}%")
+        th = stats.get("thresholds", {})
+        if th:
+            print(
+                f"阈值(最终): energy {th.get('energy', 0.0):.0f}, zcr {th.get('zcr', 0.0):.3f}, entropy_max {th.get('spectral_entropy_max', 0.0):.3f}"
+            )
+            print(
+                f"自动校准: {'ON' if th.get('auto_calibrate') else 'OFF'}, frames {th.get('calibration_frames', 0)}, percentiles (E {th.get('percentiles', {}).get('energy', 0)} / Z {th.get('percentiles', {}).get('zcr', 0)} / SE {th.get('percentiles', {}).get('entropy', 0)})"
+            )
         e = stats["energy"]
         z = stats["zcr"]
         se = stats["spectral_entropy"]
