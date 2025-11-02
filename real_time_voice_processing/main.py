@@ -37,9 +37,7 @@ def main():
         files = _collect_audio_files(input_dir)
         if files:
             audio_source = PlaylistAudioSource(files, sample_rate=Config.SAMPLE_RATE)
-    else:
-        # 交互式选择：指定路径或自动扫描默认目录
-        audio_source = _interactive_choose_audio_source()
+    # 未设置环境变量时不进行终端交互，交互逻辑在 UI 中完成
 
     # 确保 Qt 插件路径
     _ensure_qt_plugins_env()

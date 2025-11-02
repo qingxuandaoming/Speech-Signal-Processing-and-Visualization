@@ -88,6 +88,9 @@ class AudioRuntime:
 
         # 缓冲区
         self.audio_buffer = deque(maxlen=Config.AUDIO_BUFFER_SIZE)
+        # 独立的显示缓冲：避免被处理线程立即消费导致波形不连续
+        display_chunks = max(8, int(Config.WAVEFORM_DISPLAY_LENGTH / max(1, Config.CHUNK_SIZE)))
+        self.audio_display_buffer = deque(maxlen=display_chunks)
         self.processed_data = deque(maxlen=Config.PROCESSED_DATA_BUFFER_SIZE)
         # 特征历史（用于自适应VAD）
         self.energy_history = deque(maxlen=256)
@@ -99,6 +102,40 @@ class AudioRuntime:
         self.processing_thread = None
         self.lock = threading.Lock()
         self.last_error = None  # 记录最近发生的异常，便于诊断
+        # EOF 自动停止支持（由 UI 控制）
+        self.auto_stop_on_eof: bool = False
+
+    def set_audio_source(self, audio_source: AudioSource | None, auto_stop_on_eof: bool = False) -> None:
+        """
+        设置/更换当前音频源。
+
+        Parameters
+        ----------
+        audio_source : AudioSource | None
+            新的音频源；若为 None 则回退为系统麦克风。
+        auto_stop_on_eof : bool
+            当文件/播放列表读到 EOF 时是否自动停止运行。
+        """
+        # 若正在运行，先安全停止
+        if self.is_running:
+            self.stop()
+        if audio_source is None:
+            audio_source = PyAudioSource(
+                sample_rate=Config.SAMPLE_RATE,
+                channels=Config.CHANNELS,
+                format_const=Config.AUDIO_FORMAT,
+                frames_per_buffer=Config.CHUNK_SIZE,
+            )
+        self.audio_source = audio_source
+        self.rate = getattr(audio_source, "sample_rate", Config.SAMPLE_RATE)
+        self.channels = getattr(audio_source, "channels", Config.CHANNELS)
+        self.auto_stop_on_eof = bool(auto_stop_on_eof)
+        # 重置缓冲区与历史
+        self.audio_buffer.clear()
+        self.processed_data.clear()
+        self.energy_history.clear()
+        self.zcr_history.clear()
+        self.audio_display_buffer.clear()
 
     def start(self):
         """
@@ -152,10 +189,18 @@ class AudioRuntime:
             while self.is_running:
                 audio_data = self.audio_source.read(self.chunk)
                 if audio_data is None or len(audio_data) == 0:
+                    # 文件/播放列表源：EOF 检测
+                    exhausted = bool(getattr(self.audio_source, "exhausted", False))
+                    if exhausted and self.auto_stop_on_eof:
+                        # 自动停止并退出采集线程
+                        self.is_running = False
+                        break
                     time.sleep(Config.THREAD_SLEEP_TIME)
                     continue
                 with self.lock:
                     self.audio_buffer.append(audio_data)
+                    # 保留一份用于波形显示
+                    self.audio_display_buffer.append(np.array(audio_data, copy=True))
         except Exception as e:
             # 避免静默吞掉异常，记录并输出便于定位问题
             self.last_error = e
@@ -249,9 +294,9 @@ class AudioRuntime:
         一维整型数组，长度不超过 `Config.WAVEFORM_DISPLAY_LENGTH`。
         """
         with self.lock:
-            if len(self.audio_buffer) == 0:
+            if len(self.audio_display_buffer) == 0:
                 return np.array([], dtype=np.int16)
-            recent_audio = np.concatenate(list(self.audio_buffer))
+            recent_audio = np.concatenate(list(self.audio_display_buffer))
         length = Config.WAVEFORM_DISPLAY_LENGTH
         if len(recent_audio) > length:
             recent_audio = recent_audio[-length:]

@@ -125,8 +125,11 @@ class FileAudioSource(AudioSource):
         self._pcm_array: Optional[np.ndarray] = None
         self._pos = 0
         self._using_sf_stream = False
+        # EOF 状态
+        self.exhausted: bool = False
 
     def open(self) -> None:
+        self.exhausted = False
         # 优先尝试 soundfile 读取
         try:
             import soundfile as sf  # 局部导入，降低模块级依赖
@@ -186,6 +189,8 @@ class FileAudioSource(AudioSource):
             end = min(start + int(num_frames), len(self._pcm_array))
             chunk = self._pcm_array[start:end]
             self._pos = end
+            if self._pos >= len(self._pcm_array):
+                self.exhausted = True
             return chunk.astype(np.int16, copy=False)
 
         # 极端情况下才会走到这里（例如未来切换为流式 sf.SoundFile）
@@ -194,6 +199,7 @@ class FileAudioSource(AudioSource):
         import soundfile as sf
         data = self._sf.read(num_frames, dtype="int16", always_2d=False)
         if data is None:
+            self.exhausted = True
             return np.array([], dtype=np.int16)
         arr = np.array(data, dtype=np.int16)
         if arr.ndim == 2 and arr.shape[1] > 1:
@@ -210,6 +216,7 @@ class FileAudioSource(AudioSource):
             self._sf = None
             self._pcm_array = None
             self._pos = 0
+            self.exhausted = True
 
 
 class PlaylistAudioSource(AudioSource):
@@ -231,14 +238,17 @@ class PlaylistAudioSource(AudioSource):
         self._index = 0
         self.sample_rate = int(sample_rate or 0)
         self.channels = 1
+        self.exhausted: bool = False
 
     def open(self) -> None:
         self._index = 0
+        self.exhausted = False
         self._open_current()
 
     def _open_current(self) -> None:
         if self._index >= len(self._paths):
             self._current = None
+            self.exhausted = True
             return
         src = FileAudioSource(self._paths[self._index], sample_rate=self._target_sr)
         src.open()
@@ -249,6 +259,7 @@ class PlaylistAudioSource(AudioSource):
 
     def read(self, num_frames: int) -> np.ndarray:
         if self._current is None:
+            self.exhausted = True
             return np.array([], dtype=np.int16)
         chunk = self._current.read(num_frames)
         if chunk is None or len(chunk) == 0:
@@ -258,6 +269,7 @@ class PlaylistAudioSource(AudioSource):
             self._index += 1
             self._open_current()
             if self._current is None:
+                self.exhausted = True
                 return np.array([], dtype=np.int16)
             chunk = self._current.read(num_frames)
         return chunk
@@ -267,6 +279,7 @@ class PlaylistAudioSource(AudioSource):
             self._current.close()
         self._current = None
         self._index = 0
+        self.exhausted = True
 
 
 def _resample_to(arr: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:

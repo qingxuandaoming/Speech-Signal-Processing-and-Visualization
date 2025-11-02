@@ -44,5 +44,15 @@ Desktop.ini
 *.bak
 ~*
 
-# Audio files
+# Audio test assets (keep directory structure)
 real_time_voice_processing\assets\audio_tests\*.wav
+real_time_voice_processing\assets\audio_tests\*.mp3
+real_time_voice_processing\assets\audio_tests\*.m4a
+real_time_voice_processing\assets\audio_tests\*.aac
+real_time_voice_processing\assets\audio_tests\*.wma
+real_time_voice_processing\assets\audio_tests\*.flac
+real_time_voice_processing\assets\audio_tests\*.ogg
+real_time_voice_processing\assets\audio_tests\*.oga
+real_time_voice_processing\assets\audio_tests\*.aiff
+real_time_voice_processing\assets\audio_tests\*.aif
+!real_time_voice_processing\assets\audio_tests\.gitkeep

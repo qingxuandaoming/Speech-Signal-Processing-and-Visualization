@@ -60,6 +60,7 @@
         "setuptools",
         "signbit",
         "soundfile",
+        "subcontrol",
         "testpaths",
         "toctree",
         "undoc",
