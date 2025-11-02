@@ -103,12 +103,17 @@ class Config:
     
     # 语音活动检测参数
     ENERGY_THRESHOLD = 1000  # 能量阈值
-    ZCR_THRESHOLD = 0.1  # 过零率阈值
+    ZCR_THRESHOLD = 0.3  # 过零率阈值（voiced 判定为 ZCR 较低）
     
     # 自适应 VAD 参数
     ADAPTIVE_VAD_HISTORY_MIN = 20
     ADAPTIVE_VAD_ENERGY_K = 3.0
     ADAPTIVE_VAD_ZCR_K = 1.0
+    # 复合VAD门控与平滑
+    USE_ADAPTIVE_VAD = True  # 在综合判定中合并自适应VAD结果
+    SPECTRAL_ENTROPY_VOICE_MAX = 0.65  # 谱熵低于该阈值更可能为语音
+    VAD_HANGOVER_ON = 3  # 进入语音后至少保持的帧数
+    VAD_RELEASE_OFF = 2  # 退出语音需连续静音帧数
     
     # 可视化参数
     PLOT_UPDATE_INTERVAL = 50  # 界面更新间隔（毫秒）

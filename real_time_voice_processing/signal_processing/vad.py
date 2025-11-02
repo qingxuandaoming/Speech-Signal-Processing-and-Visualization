@@ -36,8 +36,8 @@ def voice_activity_detection(
     """
     energy = energy.astype(np.float32, copy=False)
     zcr = zcr.astype(np.float32, copy=False)
-    # 历史项目的判定：能量高且 ZCR 高判为语音
-    vad = (energy > energy_threshold) & (zcr > zcr_threshold)
+    # 判定：能量高且 ZCR 低更可能为语音（voiced）
+    vad = (energy > energy_threshold) & (zcr < zcr_threshold)
     return vad.astype(bool)
 
 
@@ -88,10 +88,12 @@ def adaptive_voice_activity_detection(
     hist_energy = float(np.mean(energy_history)) if energy_history else cur_energy_mean
     hist_zcr = float(np.mean(zcr_history)) if zcr_history else cur_zcr_mean
 
+    # 限制 alpha 到合理范围 [0, 0.99]
+    alpha = max(0.0, min(float(alpha), 0.99))
     # 自适应阈值（指数加权）
     energy_th = max(min_energy_threshold, alpha * hist_energy + (1 - alpha) * cur_energy_mean)
     zcr_th = min(max_zcr_threshold, alpha * hist_zcr + (1 - alpha) * cur_zcr_mean)
 
-    # 历史项目的判定：能量高且 ZCR 高判为语音
-    vad = (energy > energy_th) & (zcr > zcr_th)
+    # 判定：能量高且 ZCR 低更可能为语音（voiced）
+    vad = (energy > energy_th) & (zcr < zcr_th)
     return vad.astype(bool)

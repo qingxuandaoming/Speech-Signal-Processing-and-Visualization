@@ -104,6 +104,9 @@ class AudioRuntime:
         self.last_error = None  # 记录最近发生的异常，便于诊断
         # EOF 自动停止支持（由 UI 控制）
         self.auto_stop_on_eof: bool = False
+        # VAD 平滑状态
+        self._vad_hold: int = 0
+        self._silence_run: int = 0
 
     def set_audio_source(self, audio_source: AudioSource | None, auto_stop_on_eof: bool = False) -> None:
         """
@@ -241,14 +244,19 @@ class AudioRuntime:
                 windowed_frame = frame * self.window
                 energy = SignalProcessing.calculate_short_time_energy(windowed_frame)
                 zcr = SignalProcessing.calculate_zero_crossing_rate(windowed_frame)
-                vad = SignalProcessing.voice_activity_detection(
-                    energy, zcr, self.energy_threshold, self.zcr_threshold
-                )
 
-                # 频域特征与自适应VAD
+                # 频域特征
                 spec_entropy = SignalProcessing.calculate_spectral_entropy(
                     windowed_frame, n_fft=Config.SPECTRAL_ENTROPY_N_FFT
                 )
+
+                # 基本门控：能量高 + （ZCR 低 或 谱熵低）
+                energy_gate = bool(energy > self.energy_threshold)
+                zcr_gate = bool(zcr < self.zcr_threshold)
+                entropy_gate = bool(spec_entropy < Config.SPECTRAL_ENTROPY_VOICE_MAX)
+                vad_initial = bool(energy_gate and (zcr_gate or entropy_gate))
+
+                # 自适应VAD（用于增强稳健性，可选合并）
                 vad_adaptive = SignalProcessing.adaptive_voice_activity_detection(
                     energy,
                     zcr,
@@ -260,6 +268,24 @@ class AudioRuntime:
                     fallback_energy_threshold=self.energy_threshold,
                     fallback_zcr_threshold=self.zcr_threshold,
                 )
+                if Config.USE_ADAPTIVE_VAD:
+                    vad_initial = bool(vad_initial or bool(vad_adaptive))
+
+                # 延滞/释出平滑：减少抖动
+                if vad_initial:
+                    self._vad_hold = max(self._vad_hold, int(Config.VAD_HANGOVER_ON))
+                    self._silence_run = 0
+                    vad = 1
+                else:
+                    if self._vad_hold > 0:
+                        # 保持一段时间仍视为语音
+                        self._vad_hold -= 1
+                        vad = 1
+                        self._silence_run = 0
+                    else:
+                        # 需要连续静音帧数后才确认静音
+                        self._silence_run += 1
+                        vad = 0 if self._silence_run >= int(Config.VAD_RELEASE_OFF) else 1
                 mfcc = SignalProcessing.compute_mfcc(
                     windowed_frame,
                     sample_rate=self.rate,
