@@ -6,7 +6,7 @@
 
 ### 文档与资源链接
 
-- 项目说明（README）：`real_time_voice_processing/README.md`
+- 项目说明（README）：`README.md`
 - 开发指南：`docs/开发指南.md`
 - 架构说明：`docs/架构说明.md`
 - 算法说明（含 LaTeX 公式）：`docs/算法说明.md`
@@ -19,6 +19,11 @@
 **项目名称：** 实时语音信号处理系统  
 **技术栈：** Python + PyAudio + PyQtGraph  
 **核心功能：** 实时音频采集、特征提取、语音检测、可视化展示
+ 
+讲稿提示：
+- 强调“实时性”与“稳定性”的工程挑战与解决思路。
+- 点出能量、ZCR、谱熵三条线索贯穿算法与演示。
+- 说明后续所有指标均以 `16kHz/20ms` 帧配置为基准。
 
 ---
 
@@ -36,6 +41,11 @@
 - 多线程并发处理
 - 生产者-消费者模式
 - 实时数据流转
+ 
+讲稿提示：
+- 解释生产者-消费者：采集→处理→显示的解耦优势。
+- 强调锁与缓冲区在低延迟中的角色（避免阻塞）。
+- 提及攻击/保持/释放的决策平滑放在处理线程。
 
 ---
 
@@ -70,9 +80,9 @@ def calculate_short_time_energy(frame):
 ```python
 def calculate_zero_crossing_rate(frame):
     """计算过零率"""
-    frame = frame - np.mean(frame)  # 去直流分量
-    crossings = np.where(np.diff(np.signbit(frame)))[0]
-    return len(crossings) / len(frame)
+    signs = np.sign(frame)
+    crossings = np.sum(np.abs(np.diff(signs)) > 0)
+    return crossings / frame.size
 ```
 
 **应用场景：**
@@ -80,6 +90,11 @@ def calculate_zero_crossing_rate(frame):
 - 区分清音和浊音
 - 噪声检测
 - 语音特征分析
+ 
+讲稿提示：
+- 可选的去直流：`frame -= mean(frame)` 在强噪或设备偏置时更稳。
+- 提醒 ZCR 与擦音/摩擦音的关系：高 ZCR 不一定是噪声。
+- 与能量联合使用，提高端点检测可靠性。
 
 ---
 
@@ -108,6 +123,11 @@ def calculate_zero_crossing_rate(frame):
 1, & E(i) > T_E \,\land\, \mathrm{ZCR}(i) < T_Z \\
 0, & \text{otherwise}
 \end{cases}\]
+
+扩展（运行时）：
+- 谱熵联合判据：在能量门控成立时，若归一化谱熵 $\hat{H}<0.45$ 也可判语音。
+- 综合策略：`(ZCR 判据) \lor (谱熵判据)`；兼顾清音/浊音与摩擦音。
+- 平滑机制：攻击/保持/释放降低抖动与粘连，提升听感与曲线稳定。
 
 ### 算法性能优化
 
@@ -140,6 +160,11 @@ def calculate_zero_crossing_rate(frame):
 - 总延迟：<120ms
 - CPU占用：<15%
 - 内存占用：<100MB
+ 
+讲稿提示：
+- 指出测试在 `Windows 11 + 16kHz` 条件下，结果可复现。
+- 说明延迟构成（采集/处理/显示）和主要优化点。
+- 引导观众关注后续演示中的曲线响应速度。
 
 ---
 
@@ -157,6 +182,11 @@ def calculate_zero_crossing_rate(frame):
 - 点击"开始处理"启动系统
 - 点击"停止处理"停止运行
 - 点击"保存数据"保存结果
+ 
+讲稿提示：
+- 展示能量、ZCR、VAD 三曲线联动，观察语音段边界。
+- 切换“自适应VAD/自动校准”看看阈值与判决变化。
+- 噪声场景小实验：轻敲桌面验证谱熵的噪声抑制作用。
 
 ---
 
@@ -173,6 +203,11 @@ def calculate_zero_crossing_rate(frame):
 - 集成深度学习算法
 - 提升噪声鲁棒性
 - 扩展语音识别功能
+ 
+讲稿提示：
+- 将 MFCC 与端到端模型（ASR）作为自然扩展路径。
+- 噪声鲁棒性优先：谱减/子空间/深度去噪皆可尝试。
+- 提出边缘侧部署的可能性与能耗考量。
 
 ---
 
