@@ -123,6 +123,7 @@ class AudioRuntime:
         # VAD 平滑状态
         self._vad_hold: int = 0
         self._silence_run: int = 0
+        self._voice_run: int = 0
         # 播放控制（用于文件实时模拟时同步播放）
         self.playback_enabled: bool = False
         self._playback_pyaudio = None
@@ -438,8 +439,14 @@ class AudioRuntime:
                 if Config.USE_ADAPTIVE_VAD:
                     vad_initial = bool(vad_initial or bool(vad_adaptive))
 
-                # 延滞/释出平滑：减少抖动
+                # 攻击/延滞/释出平滑：减少抖动并抑制突发噪声
+                attack = int(getattr(Config, "VAD_ATTACK_ON", 1) or 1)
                 if vad_initial:
+                    self._voice_run += 1
+                else:
+                    self._voice_run = 0
+
+                if vad_initial and self._voice_run >= attack:
                     self._vad_hold = max(self._vad_hold, int(Config.VAD_HANGOVER_ON))
                     self._silence_run = 0
                     vad = 1
@@ -450,9 +457,9 @@ class AudioRuntime:
                         vad = 1
                         self._silence_run = 0
                     else:
-                        # 需要连续静音帧数后才确认静音
+                        # 未达到攻击时间或判为静音：直接输出静音，并累计静音帧
                         self._silence_run += 1
-                        vad = 0 if self._silence_run >= int(Config.VAD_RELEASE_OFF) else 1
+                        vad = 0
                 mfcc = SignalProcessing.compute_mfcc(
                     windowed_frame,
                     sample_rate=self.rate,

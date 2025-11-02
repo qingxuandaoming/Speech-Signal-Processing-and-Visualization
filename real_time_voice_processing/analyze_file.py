@@ -64,6 +64,7 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
         zcr_history: deque[float] = deque(maxlen=256)
         vad_hold = 0
         silence_run = 0
+        voice_run = 0
 
         # 阈值（可自动校准）
         energy_th = float(Config.ENERGY_THRESHOLD)
@@ -117,7 +118,13 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
             if Config.USE_ADAPTIVE_VAD:
                 vad_initial = bool(vad_initial or bool(vad_adapt))
 
+            attack = int(getattr(Config, "VAD_ATTACK_ON", 1) or 1)
             if vad_initial:
+                voice_run += 1
+            else:
+                voice_run = 0
+
+            if vad_initial and voice_run >= attack:
                 vad_hold = max(vad_hold, int(Config.VAD_HANGOVER_ON))
                 silence_run = 0
                 vad = 1
@@ -128,7 +135,7 @@ def compute_file_stats(file_path: str, sample_rate: int | None = None) -> Dict[s
                     silence_run = 0
                 else:
                     silence_run += 1
-                    vad = 0 if silence_run >= int(Config.VAD_RELEASE_OFF) else 1
+                    vad = 0
 
             energies.append(energy)
             zcrs.append(zcr)
