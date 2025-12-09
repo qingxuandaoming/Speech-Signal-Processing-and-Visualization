@@ -218,15 +218,6 @@ $$
 
 其中 $x_i(n)$ 为第 $i$ 帧加窗后的语音信号，$N$ 为帧长。
 
-### 过零率
-
-过零率表示单位时间内信号穿过零轴的次数，计算公式为：
-
-$$
-\mathrm{ZCR}(i) = \frac{1}{2N} \sum_{n=0}^{N-1} \big|\operatorname{sign}(x_i(n)) - \operatorname{sign}(x_i(n+1))\big|
-$$
-
-其中 $\operatorname{sign}(\cdot)$ 是符号函数，$N$ 为帧长。
 
 ### 预加重
 
@@ -369,9 +360,9 @@ sphinx-build -b html docs docs/_build/html
 
 ## 版本信息
 
-- **版本**：v1.0
+- **版本**：v1.5
 - **日期**：2025年10月21日
-- **作者**：豆包编程助手
+- **作者**：陈冠衡
 
 ## 许可证
 
